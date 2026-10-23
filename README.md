@@ -10,13 +10,24 @@ IPFS-based blockchain file sharing with wallet authentication and attribute-base
 
 Needs Node.js 18+ (22 recommended) and the MetaMask browser extension.
 
+In the project root (`mini/`):
+
 ```bash
-cd blockchain && npm install
-cd ../backend && npm install && npm run setup   # setup creates .env with random secrets
-cd ../frontend && npm install
+npm run setup   # installs all three parts and creates backend/.env with random secrets
 ```
 
-## Run (4 terminals)
+## Run
+
+In the project root:
+
+```bash
+npm start
+```
+
+This starts the local blockchain, deploys the contract, and runs the backend (http://localhost:5000) and frontend
+(http://localhost:5173) together. Ctrl+C stops everything. Every start is a fresh chain, so see the MetaMask note below.
+
+### Or run each part in its own terminal
 
 ```bash
 # 1. Local blockchain – keep running
