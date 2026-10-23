@@ -1,1 +1,105 @@
 // File controller
+const encryption = require("../services/encryptionService");
+const ipfs = require("../services/ipfsService");
+const chain = require("../services/blockchainService");
+const keyManager = require("../utils/keyManager");
+
+/**
+ * Step 1 of upload: encrypt the file, add it to IPFS and keep its key.
+ * The client then calls FileStorage.uploadFile(cid, name, contentHash, policy...) from MetaMask.
+ */
+async function upload(req, res, next) {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded (form field name: file)" });
+
+    const user = await chain.getUser(req.user.address);
+    if (!user.registered) {
+      return res.status(403).json({ error: "Wallet is not registered. Ask the admin to register it." });
+    }
+
+    const plain = req.file.buffer;
+    const contentHash = encryption.sha256(plain);
+    const key = encryption.generateKey();
+    const encrypted = encryption.encrypt(plain, key);
+
+    const cid = await ipfs.add(encrypted, req.file.originalname + ".enc");
+    keyManager.saveKey(cid, key, req.user.address);
+
+    res.status(201).json({
+      cid,
+      contentHash,
+      name: req.file.originalname,
+      size: plain.length,
+      encryptedSize: encrypted.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Decrypts and returns the file only if the contract says this wallet may access it. */
+async function download(req, res, next) {
+  try {
+    const id = parseFileId(req.params.id);
+    const file = await chain.getFile(id);
+
+    if (!(await chain.canAccess(id, req.user.address))) {
+      return res.status(403).json({ error: "ACCESS DENIED by on-chain policy" });
+    }
+
+    const key = keyManager.getKey(file.cid);
+    if (!key) return res.status(404).json({ error: "Decryption key not found for this file" });
+
+    const encrypted = await ipfs.cat(file.cid);
+    let plain;
+    try {
+      plain = encryption.decrypt(encrypted, key);
+    } catch {
+      return res.status(409).json({ error: "Integrity check failed: encrypted content was modified" });
+    }
+    if (encryption.sha256(plain) !== file.contentHash) {
+      return res.status(409).json({ error: "Integrity check failed: content hash does not match blockchain record" });
+    }
+
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(file.name)}"`);
+    res.setHeader("X-Content-Hash-Verified", "true");
+    res.send(plain);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getOne(req, res, next) {
+  try {
+    const id = parseFileId(req.params.id);
+    const file = await chain.getFile(id);
+    res.json({ ...file, canAccess: await chain.canAccess(id, req.user.address) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function mine(req, res, next) {
+  try {
+    res.json(await chain.getFilesByOwner(req.user.address));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function shared(req, res, next) {
+  try {
+    res.json(await chain.getAccessibleFiles(req.user.address));
+  } catch (err) {
+    next(err);
+  }
+}
+
+function parseFileId(raw) {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id < 1) throw Object.assign(new Error("Invalid file id"), { status: 400 });
+  return id;
+}
+
+module.exports = { upload, download, getOne, mine, shared, parseFileId };
