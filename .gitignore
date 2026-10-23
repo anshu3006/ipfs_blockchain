@@ -14,3 +14,6 @@ frontend/src/contract.json
 backend/data/
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Frontend build output
+frontend/dist/
