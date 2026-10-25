@@ -52,9 +52,26 @@ async function cat(cid) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+/** Stop keeping a file. Kubo may garbage-collect it later; the mock store deletes it now. */
+async function unpin(cid) {
+  if (cid.startsWith(MOCK_PREFIX)) {
+    if (!/^mock-[0-9a-f]{64}$/.test(cid)) return false;
+    const file = path.join(MOCK_DIR, cid);
+    if (!fs.existsSync(file)) return false;
+    fs.unlinkSync(file);
+    return true;
+  }
+  try {
+    const res = await fetch(`${API()}/api/v0/pin/rm?arg=${encodeURIComponent(cid)}`, { method: "POST" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function status() {
   const kubo = await kuboAvailable();
   return { mode: MODE(), kuboRunning: kubo, using: (await useKubo()) ? "kubo" : "mock" };
 }
 
-module.exports = { add, cat, status };
+module.exports = { add, cat, unpin, status };

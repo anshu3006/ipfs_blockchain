@@ -299,6 +299,119 @@ describe("FileStorage", function () {
     });
   });
 
+  describe("versioning and key rotation", function () {
+    const Reason = { Initial: 0n, Revocation: 1n, KeyCompromise: 2n, ContentUpdate: 3n };
+    const NEW_CID = "QmRotatedCid456";
+    const NEW_HASH = ethers.sha256(ethers.toUtf8Bytes("hello world v2"));
+    let id;
+
+    beforeEach(async function () {
+      id = await uploadAsAlice();
+    });
+
+    it("the first upload is version 1 with reason Initial", async function () {
+      const versions = await contract.getVersions(id);
+      expect(versions.length).to.equal(1);
+      expect(versions[0].cid).to.equal(CID);
+      expect(versions[0].contentHash).to.equal(HASH);
+      expect(versions[0].reason).to.equal(Reason.Initial);
+      expect(versions[0].by).to.equal(alice.address);
+      expect((await contract.getFile(id)).version).to.equal(1n);
+    });
+
+    it("owner key rotation changes the CID but keeps the content hash", async function () {
+      await expect(contract.connect(alice).rotateKey(id, NEW_CID, Reason.KeyCompromise))
+        .to.emit(contract, "KeyRotated")
+        .withArgs(id, alice.address, Reason.KeyCompromise, 2n, NEW_CID);
+
+      const f = await contract.getFile(id);
+      expect(f.cid).to.equal(NEW_CID);
+      expect(f.contentHash).to.equal(HASH);
+      expect(f.version).to.equal(2n);
+
+      const versions = await contract.getVersions(id);
+      expect(versions.map((v) => v.cid)).to.deep.equal([CID, NEW_CID]);
+      expect(versions[1].contentHash).to.equal(HASH);
+      expect(versions[1].reason).to.equal(Reason.KeyCompromise);
+    });
+
+    it("rotation does not change who can access the file", async function () {
+      await contract.connect(alice).rotateKey(id, NEW_CID, Reason.KeyCompromise);
+      expect(await contract.canAccess(id, carol.address)).to.equal(true);
+      expect(await contract.canAccess(id, bob.address)).to.equal(false);
+    });
+
+    it("revokeAndRotate revokes the user and records a Revocation version in one transaction", async function () {
+      const tx = contract.connect(alice).revokeAndRotate(id, carol.address, NEW_CID);
+      await expect(tx).to.emit(contract, "AccessRevoked").withArgs(id, carol.address, alice.address);
+      await expect(tx).to.emit(contract, "KeyRotated").withArgs(id, alice.address, Reason.Revocation, 2n, NEW_CID);
+      expect(await contract.canAccess(id, carol.address)).to.equal(false);
+      expect((await contract.getFile(id)).cid).to.equal(NEW_CID);
+    });
+
+    it("rejects an empty CID, the same CID, or a non-rotation reason", async function () {
+      await expect(contract.connect(alice).rotateKey(id, "", Reason.KeyCompromise)).to.be.revertedWith("CID required");
+      await expect(contract.connect(alice).rotateKey(id, CID, Reason.KeyCompromise)).to.be.revertedWith(
+        "New CID must differ from the current one"
+      );
+      await expect(contract.connect(alice).rotateKey(id, NEW_CID, Reason.ContentUpdate)).to.be.revertedWith(
+        "Rotation reason must be Revocation or KeyCompromise"
+      );
+      await expect(contract.connect(alice).rotateKey(id, NEW_CID, Reason.Initial)).to.be.revertedWith(
+        "Rotation reason must be Revocation or KeyCompromise"
+      );
+    });
+
+    it("only the owner or an active delegate can rotate", async function () {
+      await expect(contract.connect(bob).rotateKey(id, NEW_CID, Reason.KeyCompromise)).to.be.revertedWith(
+        "Only file owner or an active delegate"
+      );
+    });
+
+    it("a delegate can rotate after a revocation, but not for key compromise", async function () {
+      await contract.connect(alice).delegateManagement(id, carol.address, (await time.latest()) + DAY);
+      await expect(contract.connect(carol).rotateKey(id, NEW_CID, Reason.KeyCompromise)).to.be.revertedWith(
+        "Delegates can rotate only after a revocation"
+      );
+      await contract.registerUser(outsider.address, "Student", "CSE", "SIT");
+      await expect(contract.connect(carol).revokeAndRotate(id, outsider.address, NEW_CID))
+        .to.emit(contract, "KeyRotated")
+        .withArgs(id, carol.address, Reason.Revocation, 2n, NEW_CID);
+    });
+
+    it("owner can add a new content version with a new hash", async function () {
+      await expect(contract.connect(alice).addVersion(id, NEW_CID, NEW_HASH))
+        .to.emit(contract, "VersionAdded")
+        .withArgs(id, alice.address, 2n, NEW_CID);
+      const f = await contract.getFile(id);
+      expect(f.contentHash).to.equal(NEW_HASH);
+      expect(f.version).to.equal(2n);
+      const versions = await contract.getVersions(id);
+      expect(versions[1].reason).to.equal(Reason.ContentUpdate);
+      expect(versions[0].contentHash).to.equal(HASH); // history kept
+    });
+
+    it("only the owner can add a content version, even a delegate cannot", async function () {
+      await contract.connect(alice).delegateManagement(id, carol.address, (await time.latest()) + DAY);
+      await expect(contract.connect(carol).addVersion(id, NEW_CID, NEW_HASH)).to.be.revertedWith("Only file owner");
+    });
+
+    it("keeps a growing history across rotations and updates", async function () {
+      await contract.connect(alice).rotateKey(id, "QmA", Reason.KeyCompromise);
+      await contract.connect(alice).addVersion(id, "QmB", NEW_HASH);
+      await contract.connect(alice).revokeAndRotate(id, bob.address, "QmC");
+      const versions = await contract.getVersions(id);
+      expect(versions.map((v) => v.reason)).to.deep.equal([
+        Reason.Initial,
+        Reason.KeyCompromise,
+        Reason.ContentUpdate,
+        Reason.Revocation,
+      ]);
+      expect((await contract.getFile(id)).version).to.equal(4n);
+      expect(versions[3].contentHash).to.equal(NEW_HASH); // rotation keeps the latest content's hash
+    });
+  });
+
   describe("audit log", function () {
     it("records granted and denied access requests", async function () {
       const id = await uploadAsAlice();

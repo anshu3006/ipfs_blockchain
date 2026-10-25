@@ -31,6 +31,23 @@ contract FileStorage {
         Policy policy;
         bool active;
         uint256 uploadedAt;
+        uint32 version;      // current version number (1 = the first upload)
+    }
+
+    /// Why a version was created.
+    enum VersionReason {
+        Initial,        // first upload
+        Revocation,     // re-encrypted under a new key after access was revoked
+        KeyCompromise,  // re-encrypted under a new key because the old one may have leaked
+        ContentUpdate   // new content uploaded by the owner
+    }
+
+    struct Version {
+        string cid;
+        bytes32 contentHash;
+        VersionReason reason;
+        address by;
+        uint64 createdAt;
     }
 
     // ---------------------------------------------------------------- state
@@ -58,6 +75,9 @@ contract FileStorage {
     mapping(address => uint256[]) private delegatedFileIds;
     mapping(uint256 => mapping(address => bool)) private everDelegated;
 
+    // fileId => every version, oldest first; the last one is current
+    mapping(uint256 => Version[]) private fileVersions;
+
     // ---------------------------------------------------------------- events (audit log)
 
     event UserRegistered(address indexed user, string role, string department, string organization);
@@ -67,6 +87,8 @@ contract FileStorage {
     event AccessRevoked(uint256 indexed fileId, address indexed user, address by);
     event ManagementDelegated(uint256 indexed fileId, address indexed owner, address indexed delegate, uint64 expiresAt);
     event DelegationRevoked(uint256 indexed fileId, address indexed delegate);
+    event KeyRotated(uint256 indexed fileId, address indexed by, VersionReason reason, uint32 version, string cid);
+    event VersionAdded(uint256 indexed fileId, address indexed by, uint32 version, string cid);
     event FileStatusChanged(uint256 indexed fileId, bool active);
     event AccessRequested(uint256 indexed fileId, address indexed user, bool granted);
     event AdminTransferred(address indexed oldAdmin, address indexed newAdmin);
@@ -148,6 +170,8 @@ contract FileStorage {
         f.policy = Policy(policyRole, policyDepartment, policyOrganization);
         f.active = true;
         f.uploadedAt = block.timestamp;
+        f.version = 1;
+        fileVersions[id].push(Version(cid, contentHash, VersionReason.Initial, msg.sender, uint64(block.timestamp)));
         ownerFiles[msg.sender].push(id);
 
         emit FileUploaded(id, msg.sender, cid, name);
@@ -191,11 +215,76 @@ contract FileStorage {
         fileExists(fileId)
         onlyOwnerOrDelegate(fileId)
     {
+        _revoke(fileId, user);
+    }
+
+    function _revoke(uint256 fileId, address user) private {
         grantExpiry[fileId][user] = 0;
         grantedBy[fileId][user] = address(0);
         revoked[fileId][user] = true;
         revokedBy[fileId][user] = msg.sender;
         emit AccessRevoked(fileId, user, msg.sender);
+    }
+
+    // ---------------------------------------------------------------- versions & key rotation
+
+    /// @notice Record that the file was re-encrypted under a new key and stored at `newCid`.
+    ///         The content (and its hash) is unchanged. The owner may rotate for any reason;
+    ///         a delegate only after a revocation.
+    function rotateKey(uint256 fileId, string calldata newCid, VersionReason reason)
+        external
+        fileExists(fileId)
+        onlyOwnerOrDelegate(fileId)
+    {
+        _rotate(fileId, newCid, reason);
+    }
+
+    /// @notice Revoke `user` and record the key rotation in one transaction.
+    function revokeAndRotate(uint256 fileId, address user, string calldata newCid)
+        external
+        fileExists(fileId)
+        onlyOwnerOrDelegate(fileId)
+    {
+        _revoke(fileId, user);
+        _rotate(fileId, newCid, VersionReason.Revocation);
+    }
+
+    /// @notice Owner uploads new content: a new version with its own CID and content hash.
+    function addVersion(uint256 fileId, string calldata newCid, bytes32 newContentHash)
+        external
+        fileExists(fileId)
+        onlyOwner(fileId)
+    {
+        File storage f = files[fileId];
+        _requireNewCid(f, newCid);
+        f.cid = newCid;
+        f.contentHash = newContentHash;
+        f.version++;
+        fileVersions[fileId].push(
+            Version(newCid, newContentHash, VersionReason.ContentUpdate, msg.sender, uint64(block.timestamp))
+        );
+        emit VersionAdded(fileId, msg.sender, f.version, newCid);
+    }
+
+    function _rotate(uint256 fileId, string calldata newCid, VersionReason reason) private {
+        require(
+            reason == VersionReason.Revocation || reason == VersionReason.KeyCompromise,
+            "Rotation reason must be Revocation or KeyCompromise"
+        );
+        File storage f = files[fileId];
+        if (msg.sender != f.owner) {
+            require(reason == VersionReason.Revocation, "Delegates can rotate only after a revocation");
+        }
+        _requireNewCid(f, newCid);
+        f.cid = newCid;
+        f.version++;
+        fileVersions[fileId].push(Version(newCid, f.contentHash, reason, msg.sender, uint64(block.timestamp)));
+        emit KeyRotated(fileId, msg.sender, reason, f.version, newCid);
+    }
+
+    function _requireNewCid(File storage f, string calldata newCid) private view {
+        require(bytes(newCid).length > 0, "CID required");
+        require(keccak256(bytes(newCid)) != keccak256(bytes(f.cid)), "New CID must differ from the current one");
     }
 
     function _grant(uint256 fileId, address user, uint64 expiresAt) private {
@@ -304,6 +393,11 @@ contract FileStorage {
 
     function getFilesByOwner(address owner) external view returns (uint256[] memory) {
         return ownerFiles[owner];
+    }
+
+    /// @notice Every version of a file, oldest first (the last one is current).
+    function getVersions(uint256 fileId) external view fileExists(fileId) returns (Version[] memory) {
+        return fileVersions[fileId];
     }
 
     /// @notice Active delegates of a file and when each delegation ends.

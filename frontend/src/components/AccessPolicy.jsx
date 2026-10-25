@@ -8,7 +8,9 @@ import { api } from "../services/api";
 import { chain } from "../services/blockchain";
 import { DURATIONS, expiryFromNow, formatExpiry } from "../utils/time";
 import { shortAddress } from "../utils/wallet";
+import { rotateKey } from "../services/versions";
 import Notice from "./Notice";
+import Versions from "./Versions";
 
 export const ROLES = ["", "Student", "Faculty", "Staff", "Admin"];
 export const DEPARTMENTS = ["", "CSE", "ECE", "ISE", "MECH", "CIVIL", "EEE"];
@@ -130,13 +132,16 @@ export default function AccessPolicy({ file, onChanged, asDelegate = false, dele
   const [busy, setBusy] = useState(null);
   const [notice, setNotice] = useState(null);
   const [check, setCheck] = useState(null);
+  const [rotateOnRevoke, setRotateOnRevoke] = useState(false);
+  const [versionsTick, setVersionsTick] = useState(0);
 
   async function run(label, fn, success) {
     setBusy(label);
     setNotice(null);
     try {
-      await fn();
-      setNotice({ type: "success", text: success });
+      const result = await fn();
+      setNotice({ type: "success", text: typeof success === "function" ? success(result) : success });
+      setVersionsTick((t) => t + 1);
       onChanged?.();
     } catch (err) {
       setNotice({ type: "error", text: err.message });
@@ -207,9 +212,17 @@ export default function AccessPolicy({ file, onChanged, asDelegate = false, dele
           <button
             className="btn btn-danger"
             disabled={!!busy}
-            onClick={() => run("revoke", () => chain.revokeAccess(file.id, requireAddress(target)), "Access revoked")}
+            onClick={() =>
+              rotateOnRevoke
+                ? run(
+                    "revoke",
+                    () => rotateKey(file.id, { reason: "Revocation", revokeUser: requireAddress(target) }),
+                    (r) => `Access revoked and key rotated: the old key is ${r.keyDestroyed ? "destroyed" : "gone"}`
+                  )
+                : run("revoke", () => chain.revokeAccess(file.id, requireAddress(target)), "Access revoked")
+            }
           >
-            {busy === "revoke" ? "Confirm…" : "Revoke"}
+            {busy === "revoke" ? "Confirm…" : rotateOnRevoke ? "Revoke + rotate key" : "Revoke"}
           </button>
           <button
             className="btn btn-ghost"
@@ -221,6 +234,10 @@ export default function AccessPolicy({ file, onChanged, asDelegate = false, dele
             Check access
           </button>
         </div>
+        <label className="checkbox">
+          <input type="checkbox" checked={rotateOnRevoke} onChange={(e) => setRotateOnRevoke(e.target.checked)} />
+          <span>On revoke, also rotate the encryption key (re-encrypt the file and destroy the old key)</span>
+        </label>
         {check && (
           <div className={`decision ${check.granted ? "decision-ok" : "decision-no"}`}>
             <strong>{check.granted ? "ACCESS GRANTED" : "ACCESS DENIED"}</strong>
@@ -233,6 +250,8 @@ export default function AccessPolicy({ file, onChanged, asDelegate = false, dele
       </section>
 
       {!asDelegate && <Delegates file={file} run={run} busy={busy} />}
+
+      <Versions file={file} isOwner={!asDelegate} refresh={versionsTick} onChanged={onChanged} />
 
       {!asDelegate && (
         <section>

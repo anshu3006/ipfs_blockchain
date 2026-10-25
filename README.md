@@ -74,7 +74,9 @@ These are public test keys with fake ETH. Never use them on a real network.
 | 7 | #1 (delegate) | Delegated to Me → Manage → grant #2 for 1 hour | #2 can now download; check says "granted by delegate" |
 | 8 | #1 | Try to grant its own address | Refused: "Delegates cannot grant themselves access" |
 | 9 | #0 | Delegates → Remove #1 → Check access for #2 | **ACCESS DENIED** – the delegate's grant ended with the delegation |
-| 10 | any | Audit Log | Every action above, with block and tx hash |
+| 10 | #0 | My Files → Manage → tick "also rotate the key" → revoke #1 | New version in the Versions list; the previous version shows "Key destroyed" |
+| 11 | #0 | Upload new version, then Rotate key now | v3 "New content", v4 "Key rotated (compromise)"; v2 still downloadable by the owner |
+| 12 | any | Audit Log | Every action above, with block and tx hash |
 
 Switch accounts in MetaMask between steps. The app logs you out automatically, so just click *Connect Wallet* again.
 
@@ -106,6 +108,23 @@ An owner can let another registered user (for example a TA) manage access to one
 Contract functions: `delegateManagement`, `revokeDelegation`, `isDelegate`, `getDelegates`, `getManagedFiles`,
 `grantTemporaryAccess`, `hasActiveGrant`. Events: `ManagementDelegated`, `DelegationRevoked`; `AccessGranted` and
 `AccessRevoked` record who acted (`by`) and the grant's expiry.
+
+## Key rotation and versioning
+
+Every file keeps an on-chain **version history** (CID, content hash, reason, who, when). On **My Files → Manage**:
+
+- **Revoke + rotate key** (tick the box under Revoke): revokes the user and re-encrypts the file under a new key, in one transaction. Delegates can do this too.
+- **Rotate key now (key compromised)**: owner re-keys the file without revoking anyone.
+- **Upload new version**: owner replaces the content; earlier versions stay in the history and the owner can still download them.
+
+A rotation runs in three steps, so a rejected MetaMask transaction never breaks the file:
+
+1. `POST /api/files/:id/rotate/prepare` – backend decrypts the current version, encrypts it under a **new random key**, adds it to IPFS (new CID) and stores the new key. The old key is still kept.
+2. MetaMask: `rotateKey(fileId, newCid, reason)` or `revokeAndRotate(fileId, user, newCid)` makes the new CID current. The content hash stays the same.
+3. `POST /api/files/:id/rotate/commit` – only once the chain shows the old CID was replaced by a rotation, the backend **destroys the old key** and unpins the old CID (**crypto-shredding**: old copies can never be decrypted again).
+
+New content: `POST /api/files/:id/versions` then `addVersion(fileId, cid, contentHash)`. History: `GET /api/files/:id/versions`; old version: `GET /api/files/:id/versions/:n/download` (owner only; 410 if its key was destroyed).
+Events: `KeyRotated`, `VersionAdded`.
 
 Other endpoints: `GET /api/files/managed` (files delegated to you), `/api/files/:id/delegates`, `/api/files/mine`, `/api/files/shared`, `/api/files/:id`, `/api/access/:id/check` (decision + reason), `/api/access/audit`, `/api/access/user/:address`, `/api/health`.
 

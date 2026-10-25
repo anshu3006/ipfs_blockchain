@@ -333,6 +333,29 @@ td > .badge:first-child, dd > .badge:first-child { margin-left: 0; }
   font-size: 0.9rem;
 }
 .delegate-list li .btn { margin-left: auto; }
+.checkbox { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.875rem; color: var(--muted); cursor: pointer; }
+.checkbox input { width: auto; margin-top: 0.2rem; accent-color: var(--primary); }
+label.btn { cursor: pointer; }
+.btn-disabled { opacity: 0.55; pointer-events: none; }
+.versions { list-style: none; margin: 0; padding: 0 0 0 0.9rem; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 0.6rem; }
+.versions li { position: relative; padding: 0.55rem 0.75rem; border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; gap: 0.3rem; }
+.versions li::before {
+  content: "";
+  position: absolute;
+  left: calc(-0.9rem - 6px);
+  top: 0.95rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--border);
+}
+.versions .version-current { border-color: var(--ok); }
+.versions .version-current::before { border-color: var(--ok); background: var(--ok); }
+.version-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.version-head .badge { margin-left: 0; }
+.version-head .btn { margin-left: auto; }
+.version-meta { display: flex; gap: 0.9rem; flex-wrap: wrap; font-size: 0.82rem; }
 .request-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; }
 .request-row .field { flex: 0 1 200px; }
 

@@ -33,7 +33,24 @@ function formatFile(f) {
     policy: { role: f.policy.role, department: f.policy.department, organization: f.policy.organization },
     active: f.active,
     uploadedAt: new Date(Number(f.uploadedAt) * 1000).toISOString(),
+    version: Number(f.version),
   };
+}
+
+// Mirrors the contract's VersionReason enum.
+const VERSION_REASONS = ["Initial", "Revocation", "KeyCompromise", "ContentUpdate"];
+
+/** Every version of a file, oldest first; version numbers start at 1. */
+async function getVersions(id) {
+  const versions = await getContract().getVersions(id);
+  return versions.map((v, i) => ({
+    version: i + 1,
+    cid: v.cid,
+    contentHash: v.contentHash,
+    reason: VERSION_REASONS.at(Number(v.reason)),
+    by: v.by,
+    createdAt: new Date(Number(v.createdAt) * 1000).toISOString(),
+  }));
 }
 
 function formatUser(u) {
@@ -124,8 +141,9 @@ async function getAuditLog({ fileId, address } = {}) {
     const args = {};
     log.fragment.inputs.forEach((input, i) => {
       const v = log.args[i];
+      if (input.name === "reason") args.reason = VERSION_REASONS.at(Number(v));
       // A grant "forever" is uint64 max; report it as null (no expiry).
-      args[input.name] = typeof v === "bigint" ? (v >= FOREVER ? null : Number(v)) : v;
+      else args[input.name] = typeof v === "bigint" ? (v >= FOREVER ? null : Number(v)) : v;
     });
     if (fileId !== undefined && args.fileId !== fileId) continue;
     if (address) {
@@ -167,6 +185,8 @@ module.exports = {
   isDelegate,
   getDelegates,
   getManagedFiles,
+  getVersions,
+  VERSION_REASONS,
   getFilesByOwner,
   getAccessibleFiles,
   getAdmin,

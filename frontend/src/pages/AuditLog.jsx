@@ -16,7 +16,11 @@ const LABELS = {
   AdminTransferred: "Admin transferred",
   ManagementDelegated: "Delegated",
   DelegationRevoked: "Delegation removed",
+  KeyRotated: "Key rotated",
+  VersionAdded: "New version",
 };
+
+const ROTATION_REASON = { Revocation: "after revoke", KeyCompromise: "key compromised" };
 
 const TONE = {
   AccessGranted: "badge-ok",
@@ -24,6 +28,8 @@ const TONE = {
   UserRegistered: "badge-admin",
   ManagementDelegated: "badge-warn",
   DelegationRevoked: "badge-off",
+  KeyRotated: "badge-warn",
+  VersionAdded: "badge-admin",
 };
 
 function describe({ event, args }) {
@@ -54,6 +60,15 @@ function describe({ event, args }) {
       );
     case "DelegationRevoked":
       return <>#{args.fileId} from {who(args.delegate)}</>;
+    case "KeyRotated":
+      return (
+        <>
+          #{args.fileId} → v{args.version} by {who(args.by)}
+          <span className="muted"> · {ROTATION_REASON[args.reason] || args.reason}, old key destroyed</span>
+        </>
+      );
+    case "VersionAdded":
+      return <>#{args.fileId} → v{args.version} by {who(args.by)}</>;
     case "FileStatusChanged":
       return <>#{args.fileId} {args.active ? "activated" : "deactivated"}</>;
     case "AccessRequested":

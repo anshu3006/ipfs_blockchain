@@ -7,6 +7,9 @@ import { ethers } from "ethers";
 const found = import.meta.glob("../contract.json", { eager: true, import: "default" });
 export const contractInfo = Object.values(found)[0] || null;
 
+// Mirrors the contract's VersionReason enum.
+const VERSION_REASON = { Initial: 0, Revocation: 1, KeyCompromise: 2, ContentUpdate: 3 };
+
 let signer = null;
 
 export function setSigner(value) {
@@ -73,6 +76,9 @@ export const chain = {
     expiresAt ? send("grantTemporaryAccess", fileId, address, expiresAt) : send("grantAccess", fileId, address),
   revokeAccess: (fileId, address) => send("revokeAccess", fileId, address),
   delegateManagement: (fileId, address, expiresAt) => send("delegateManagement", fileId, address, expiresAt),
+  rotateKey: (fileId, newCid, reason) => send("rotateKey", fileId, newCid, VERSION_REASON[reason]),
+  revokeAndRotate: (fileId, address, newCid) => send("revokeAndRotate", fileId, address, newCid),
+  addVersion: (fileId, newCid, contentHash) => send("addVersion", fileId, newCid, contentHash),
   revokeDelegation: (fileId, address) => send("revokeDelegation", fileId, address),
   setFileActive: (fileId, active) => send("setFileActive", fileId, active),
 

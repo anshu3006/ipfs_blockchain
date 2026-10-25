@@ -41,4 +41,17 @@ function getKey(cid) {
   return decrypt(Buffer.from(entry.key, "base64"), masterKey());
 }
 
-module.exports = { saveKey, getKey };
+function hasKey(cid) {
+  return Boolean(load()[cid]);
+}
+
+/** Crypto-shredding: once a key is gone, every copy of the data it encrypted is unreadable. */
+function deleteKey(cid) {
+  const store = load();
+  if (!store[cid]) return false;
+  delete store[cid];
+  save(store);
+  return true;
+}
+
+module.exports = { saveKey, getKey, hasKey, deleteKey };

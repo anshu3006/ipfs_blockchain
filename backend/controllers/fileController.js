@@ -47,27 +47,39 @@ async function download(req, res, next) {
       return res.status(403).json({ error: "ACCESS DENIED by on-chain policy" });
     }
 
-    const key = keyManager.getKey(file.cid);
-    if (!key) return res.status(404).json({ error: "Decryption key not found for this file" });
-
-    const encrypted = await ipfs.cat(file.cid);
-    let plain;
-    try {
-      plain = encryption.decrypt(encrypted, key);
-    } catch {
-      return res.status(409).json({ error: "Integrity check failed: encrypted content was modified" });
-    }
-    if (encryption.sha256(plain) !== file.contentHash) {
-      return res.status(409).json({ error: "Integrity check failed: content hash does not match blockchain record" });
-    }
-
-    res.setHeader("Content-Type", "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(file.name)}"`);
-    res.setHeader("X-Content-Hash-Verified", "true");
-    res.send(plain);
+    sendFile(res, file.name, await decryptStored(file.cid, file.contentHash));
   } catch (err) {
     next(err);
   }
+}
+
+/**
+ * Fetches `cid` from IPFS, decrypts it with its stored key and checks it against the
+ * on-chain content hash. Throws an error with an HTTP status if any step fails.
+ */
+async function decryptStored(cid, contentHash) {
+  const key = keyManager.getKey(cid);
+  if (!key) {
+    throw Object.assign(new Error("Decryption key not found: it was destroyed or never stored"), { status: 410 });
+  }
+  const encrypted = await ipfs.cat(cid);
+  let plain;
+  try {
+    plain = encryption.decrypt(encrypted, key);
+  } catch {
+    throw Object.assign(new Error("Integrity check failed: encrypted content was modified"), { status: 409 });
+  }
+  if (encryption.sha256(plain) !== contentHash) {
+    throw Object.assign(new Error("Integrity check failed: content hash does not match blockchain record"), { status: 409 });
+  }
+  return plain;
+}
+
+function sendFile(res, name, data) {
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(name)}"`);
+  res.setHeader("X-Content-Hash-Verified", "true");
+  res.send(data);
 }
 
 async function getOne(req, res, next) {
@@ -130,4 +142,4 @@ function parseFileId(raw) {
   return id;
 }
 
-module.exports = { upload, download, getOne, delegates, mine, shared, managed, parseFileId };
+module.exports = { upload, download, getOne, delegates, mine, shared, managed, parseFileId, decryptStored, sendFile };

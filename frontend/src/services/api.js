@@ -61,21 +61,34 @@ export const api = {
   delegates: (id) => request(`/files/${id}/delegates`),
 
   /** Returns the decrypted file as a Blob, only if the contract allows it. */
-  download: async (id) => {
-    const res = await request(`/files/${id}/download`, { raw: true });
-    const disposition = res.headers.get("Content-Disposition") || "";
-    const match = disposition.match(/filename="([^"]+)"/);
-    return {
-      blob: await res.blob(),
-      name: match ? decodeURIComponent(match[1]) : `file-${id}`,
-      verified: res.headers.get("X-Content-Hash-Verified") === "true",
-    };
+  download: (id) => fetchFile(`/files/${id}/download`, `file-${id}`),
+
+  versions: (id) => request(`/files/${id}/versions`),
+  /** Owner only; fails with 410 when that version's key was destroyed by a rotation. */
+  downloadVersion: (id, n) => fetchFile(`/files/${id}/versions/${n}/download`, `file-${id}.v${n}`),
+  uploadVersion: (id, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request(`/files/${id}/versions`, { method: "POST", body: form });
   },
+  prepareRotation: (id, reason) => request(`/files/${id}/rotate/prepare`, { method: "POST", body: { reason } }),
+  commitRotation: (id, oldCid) => request(`/files/${id}/rotate/commit`, { method: "POST", body: { oldCid } }),
 
   checkAccess: (id, address) => request(`/access/${id}/check${query({ address })}`),
   user: (address) => request(`/access/user/${address}`),
   audit: (filters) => request(`/access/audit${query(filters)}`),
 };
+
+async function fetchFile(path, fallbackName) {
+  const res = await request(path, { raw: true });
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  return {
+    blob: await res.blob(),
+    name: match ? decodeURIComponent(match[1]) : fallbackName,
+    verified: res.headers.get("X-Content-Hash-Verified") === "true",
+  };
+}
 
 export function saveBlob(blob, name) {
   const url = URL.createObjectURL(blob);

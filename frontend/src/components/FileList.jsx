@@ -56,7 +56,10 @@ export default function FileList({ files, actions, showOwner = false, empty = "N
           {files.map((f) => (
             <tr key={f.id}>
               <td className="mono">#{f.id}</td>
-              <td className="file-name">{f.name}</td>
+              <td className="file-name">
+                {f.name}
+                {f.version > 1 && <span className="badge" title={`Version ${f.version}`}>v{f.version}</span>}
+              </td>
               {showOwner && <td className="mono" title={f.owner}>{shortAddress(f.owner)}</td>}
               <td><Cid cid={f.cid} /></td>
               <td>
