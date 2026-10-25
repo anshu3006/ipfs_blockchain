@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import UploadFile from "./pages/UploadFile";
 import MyFiles from "./pages/MyFiles";
 import SharedFiles from "./pages/SharedFiles";
+import DelegatedFiles from "./pages/DelegatedFiles";
 import AuditLog from "./pages/AuditLog";
 import Admin from "./pages/Admin";
 import { api, setToken } from "./services/api";
@@ -91,6 +92,7 @@ export default function App() {
     upload: <UploadFile {...props} />,
     mine: <MyFiles {...props} />,
     shared: <SharedFiles {...props} />,
+    delegated: <DelegatedFiles {...props} />,
     audit: <AuditLog {...props} />,
     admin: session.isAdmin ? <Admin {...props} /> : <Dashboard {...props} />,
   };

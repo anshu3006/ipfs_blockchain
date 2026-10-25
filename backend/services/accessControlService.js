@@ -8,12 +8,18 @@ async function evaluate(fileId, address) {
   const granted = await chain.canAccess(fileId, address);
   const user = await chain.getUser(address);
 
+  const isOwner = (a) => a.toLowerCase() === file.owner.toLowerCase();
+
   let reason;
-  if (file.owner.toLowerCase() === address.toLowerCase()) reason = "You are the owner of this file";
+  let grant = null;
+  if (isOwner(address)) reason = "You are the owner of this file";
   else if (!file.active) reason = "File has been deactivated by its owner";
-  else if (await chain.isRevoked(fileId, address)) reason = "Access was revoked by the owner";
-  else if (await chain.isExplicitlyGranted(fileId, address)) reason = "Access explicitly granted by the owner";
-  else if (!user.registered) reason = "Wallet is not registered";
+  else if (await chain.isRevoked(fileId, address)) reason = "Access was revoked";
+  else if ((grant = await chain.getActiveGrant(fileId, address))) {
+    const who = isOwner(grant.by) ? "the owner" : `delegate ${grant.by}`;
+    // The expiry is returned in `grant.expiresAt` for the client to format in local time.
+    reason = `Access explicitly granted by ${who}`;
+  } else if (!user.registered) reason = "Wallet is not registered";
   else {
     const mismatches = ["role", "department", "organization"].filter(
       (k) => file.policy[k] && file.policy[k] !== user[k]
@@ -24,7 +30,7 @@ async function evaluate(fileId, address) {
       : "Attributes match the file's access policy";
   }
 
-  return { fileId, address, granted, reason, policy: file.policy, userAttributes: user };
+  return { fileId, address, granted, reason, grant, policy: file.policy, userAttributes: user };
 }
 
 module.exports = { evaluate };

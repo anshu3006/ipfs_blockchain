@@ -6,6 +6,7 @@ export const PAGES = [
   { id: "upload", label: "Upload" },
   { id: "mine", label: "My Files" },
   { id: "shared", label: "Shared With Me" },
+  { id: "delegated", label: "Delegated to Me" },
   { id: "audit", label: "Audit Log" },
   { id: "admin", label: "Admin", adminOnly: true },
 ];

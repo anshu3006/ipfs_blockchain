@@ -63,8 +63,39 @@ async function isRevoked(id, address) {
   return getContract().revoked(id, address);
 }
 
-async function isExplicitlyGranted(id, address) {
-  return getContract().explicitGrant(id, address);
+const FOREVER = 2n ** 64n - 1n;
+
+function toDate(seconds) {
+  return seconds >= FOREVER ? null : new Date(Number(seconds) * 1000).toISOString();
+}
+
+/** The explicit grant for this user, if it is currently active. expiresAt null = never expires. */
+async function getActiveGrant(id, address) {
+  const contract = getContract();
+  if (!(await contract.hasActiveGrant(id, address))) return null;
+  const [expiresAt, by] = await Promise.all([contract.grantExpiry(id, address), contract.grantedBy(id, address)]);
+  return { expiresAt: toDate(expiresAt), by };
+}
+
+async function isDelegate(id, address) {
+  return getContract().isDelegate(id, address);
+}
+
+async function getDelegates(id) {
+  const [delegates, expiries] = await getContract().getDelegates(id);
+  return delegates.map((address, i) => ({ address, expiresAt: toDate(expiries[i]) }));
+}
+
+/** Files `address` may currently manage as a delegate, each with when that right ends. */
+async function getManagedFiles(address) {
+  const contract = getContract();
+  const ids = await contract.getManagedFiles(address);
+  return Promise.all(
+    ids.map(async (id) => ({
+      ...(await getFile(id)),
+      delegationExpiresAt: toDate(await contract.delegationExpiry(id, address)),
+    }))
+  );
 }
 
 async function getFilesByOwner(address) {
@@ -93,7 +124,8 @@ async function getAuditLog({ fileId, address } = {}) {
     const args = {};
     log.fragment.inputs.forEach((input, i) => {
       const v = log.args[i];
-      args[input.name] = typeof v === "bigint" ? Number(v) : v;
+      // A grant "forever" is uint64 max; report it as null (no expiry).
+      args[input.name] = typeof v === "bigint" ? (v >= FOREVER ? null : Number(v)) : v;
     });
     if (fileId !== undefined && args.fileId !== fileId) continue;
     if (address) {
@@ -131,7 +163,10 @@ module.exports = {
   getUser,
   canAccess,
   isRevoked,
-  isExplicitlyGranted,
+  getActiveGrant,
+  isDelegate,
+  getDelegates,
+  getManagedFiles,
   getFilesByOwner,
   getAccessibleFiles,
   getAdmin,

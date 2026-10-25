@@ -10,7 +10,9 @@ router.use(requireAuth);
 router.post("/upload", upload.single("file"), files.upload);
 router.get("/mine", files.mine);
 router.get("/shared", files.shared);
+router.get("/managed", files.managed);
 router.get("/:id", files.getOne);
+router.get("/:id/delegates", files.delegates);
 router.get("/:id/download", files.download);
 
 module.exports = router;

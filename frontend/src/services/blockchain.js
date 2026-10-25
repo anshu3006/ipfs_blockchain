@@ -68,8 +68,12 @@ export const chain = {
 
   updatePolicy: (fileId, policy) =>
     send("updatePolicy", fileId, policy.role, policy.department, policy.organization),
-  grantAccess: (fileId, address) => send("grantAccess", fileId, address),
+  /** expiresAt = unix seconds, or null for no expiry (a delegate's grant still ends with its delegation). */
+  grantAccess: (fileId, address, expiresAt = null) =>
+    expiresAt ? send("grantTemporaryAccess", fileId, address, expiresAt) : send("grantAccess", fileId, address),
   revokeAccess: (fileId, address) => send("revokeAccess", fileId, address),
+  delegateManagement: (fileId, address, expiresAt) => send("delegateManagement", fileId, address, expiresAt),
+  revokeDelegation: (fileId, address) => send("revokeDelegation", fileId, address),
   setFileActive: (fileId, active) => send("setFileActive", fileId, active),
 
   /** Records the access attempt on-chain (audit log) and returns the decision. */

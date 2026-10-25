@@ -56,7 +56,9 @@ export const api = {
   },
   myFiles: () => request("/files/mine"),
   sharedFiles: () => request("/files/shared"),
+  managedFiles: () => request("/files/managed"),
   file: (id) => request(`/files/${id}`),
+  delegates: (id) => request(`/files/${id}/delegates`),
 
   /** Returns the decrypted file as a Blob, only if the contract allows it. */
   download: async (id) => {

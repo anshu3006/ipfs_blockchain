@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api, saveBlob } from "../services/api";
 import { chain } from "../services/blockchain";
 import Notice from "./Notice";
+import { formatExpiry } from "../utils/time";
 
 export default function AccessRequest({ address }) {
   const [fileId, setFileId] = useState("");
@@ -49,7 +50,10 @@ export default function AccessRequest({ address }) {
       {decision && (
         <div className={`decision ${decision.granted ? "decision-ok" : "decision-no"}`}>
           <strong>{decision.granted ? "ACCESS GRANTED · download started" : "ACCESS DENIED"}</strong>
-          <span>{decision.reason}</span>
+          <span>
+            {decision.reason}
+            {decision.grant?.expiresAt && `, ends ${formatExpiry(decision.grant.expiresAt)}`}
+          </span>
         </div>
       )}
       <Notice notice={error && { type: "error", text: error }} onClose={() => setError(null)} />

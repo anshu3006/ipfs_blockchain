@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../services/api";
 import Notice from "../components/Notice";
 import { shortAddress } from "../utils/wallet";
+import { formatDate } from "../utils/time";
 
 const LABELS = {
   UserRegistered: "User registered",
@@ -13,12 +14,16 @@ const LABELS = {
   FileStatusChanged: "Status changed",
   AccessRequested: "Access requested",
   AdminTransferred: "Admin transferred",
+  ManagementDelegated: "Delegated",
+  DelegationRevoked: "Delegation removed",
 };
 
 const TONE = {
   AccessGranted: "badge-ok",
   AccessRevoked: "badge-off",
   UserRegistered: "badge-admin",
+  ManagementDelegated: "badge-warn",
+  DelegationRevoked: "badge-off",
 };
 
 function describe({ event, args }) {
@@ -32,8 +37,23 @@ function describe({ event, args }) {
     case "PolicyUpdated":
       return <>#{args.fileId} → {policy}</>;
     case "AccessGranted":
+      return (
+        <>
+          #{args.fileId} for {who(args.user)} by {who(args.by)}
+          {args.expiresAt !== null && <span className="muted"> · until {formatDate(args.expiresAt)}</span>}
+        </>
+      );
     case "AccessRevoked":
-      return <>#{args.fileId} for {who(args.user)}</>;
+      return <>#{args.fileId} for {who(args.user)} by {who(args.by)}</>;
+    case "ManagementDelegated":
+      return (
+        <>
+          #{args.fileId} to {who(args.delegate)} by {who(args.owner)}
+          <span className="muted"> · until {formatDate(args.expiresAt)}</span>
+        </>
+      );
+    case "DelegationRevoked":
+      return <>#{args.fileId} from {who(args.delegate)}</>;
     case "FileStatusChanged":
       return <>#{args.fileId} {args.active ? "activated" : "deactivated"}</>;
     case "AccessRequested":

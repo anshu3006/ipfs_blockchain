@@ -74,7 +74,35 @@ async function getOne(req, res, next) {
   try {
     const id = parseFileId(req.params.id);
     const file = await chain.getFile(id);
-    res.json({ ...file, canAccess: await chain.canAccess(id, req.user.address) });
+    const [canAccess, isDelegate] = await Promise.all([
+      chain.canAccess(id, req.user.address),
+      chain.isDelegate(id, req.user.address),
+    ]);
+    res.json({ ...file, canAccess, isDelegate });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Active delegates of a file. Visible to the owner and to its delegates. */
+async function delegates(req, res, next) {
+  try {
+    const id = parseFileId(req.params.id);
+    const file = await chain.getFile(id);
+    const me = req.user.address;
+    if (file.owner.toLowerCase() !== me.toLowerCase() && !(await chain.isDelegate(id, me))) {
+      return res.status(403).json({ error: "Only the owner or a delegate can see delegates" });
+    }
+    res.json(await chain.getDelegates(id));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Files other owners have delegated to the signed-in wallet. */
+async function managed(req, res, next) {
+  try {
+    res.json(await chain.getManagedFiles(req.user.address));
   } catch (err) {
     next(err);
   }
@@ -102,4 +130,4 @@ function parseFileId(raw) {
   return id;
 }
 
-module.exports = { upload, download, getOne, mine, shared, parseFileId };
+module.exports = { upload, download, getOne, delegates, mine, shared, managed, parseFileId };

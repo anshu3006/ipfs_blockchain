@@ -320,6 +320,19 @@ td > .badge:first-child, dd > .badge:first-child { margin-left: 0; }
 .manage section:first-child { border-top: 0; padding-top: 0; }
 .manage section > .btn { align-self: flex-start; }
 .manage h4, .manage .hint { margin: 0; }
+.grid-delegate { display: grid; grid-template-columns: minmax(0, 2fr) minmax(140px, 1fr); gap: 0.75rem; }
+.delegate-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.delegate-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.delegate-list li .btn { margin-left: auto; }
 .request-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; }
 .request-row .field { flex: 0 1 200px; }
 
@@ -359,7 +372,7 @@ td > .badge:first-child, dd > .badge:first-child { margin-left: 0; }
 
 .tabs { scrollbar-width: none; }
 
-@media (max-width: 1120px) {
+@media (max-width: 1260px) {
   .navbar { padding: 0.5rem 1rem; row-gap: 0.4rem; }
   .tabs { order: 3; flex-basis: 100%; }
   .account { margin-left: auto; }

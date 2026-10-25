@@ -69,8 +69,12 @@ These are public test keys with fake ETH. Never use them on a real network.
 | 2 | #0 | Upload a file with policy Department = CSE | File #1, CID, SHA-256 and tx hash shown |
 | 3 | #1 (CSE) | Shared With Me → Download | File downloads, "integrity verified" |
 | 4 | #2 (ECE) | Shared With Me → Request file ID 1 | **ACCESS DENIED** – department requires "CSE" |
-| 5 | #0 | My Files → Manage → revoke #1 → Check access | "Access was revoked by the owner" |
-| 6 | any | Audit Log | Every action above, with block and tx hash |
+| 5 | #0 | My Files → Manage → revoke #1 → Check access | "Access was revoked" |
+| 6 | #0 | My Files → Manage → Delegates: delegate to #1 for 7 days | #1 listed with its end date |
+| 7 | #1 (delegate) | Delegated to Me → Manage → grant #2 for 1 hour | #2 can now download; check says "granted by delegate" |
+| 8 | #1 | Try to grant its own address | Refused: "Delegates cannot grant themselves access" |
+| 9 | #0 | Delegates → Remove #1 → Check access for #2 | **ACCESS DENIED** – the delegate's grant ended with the delegation |
+| 10 | any | Audit Log | Every action above, with block and tx hash |
 
 Switch accounts in MetaMask between steps. The app logs you out automatically, so just click *Connect Wallet* again.
 
@@ -86,10 +90,24 @@ Set `IPFS_MODE` in `backend/.env` to `kubo` or `mock` to force one.
 2. **Upload** – `POST /api/files/upload` (multipart `file`) → backend encrypts, adds to IPFS, stores the key → returns `cid`, `contentHash`
 3. **Register on-chain** – user calls `uploadFile(cid, name, contentHash, role, department, organization)` from MetaMask (empty policy field = any)
 4. **Download** – `GET /api/files/:id/download` → backend checks `canAccess` on-chain, fetches from IPFS, decrypts, verifies hash
-5. **Manage** – owner calls `grantAccess`, `revokeAccess`, `updatePolicy`, `setFileActive` from MetaMask
-6. **Request** – `requestAccess(fileId)` records the attempt (granted or denied) on-chain
+5. **Manage** – owner calls `grantAccess` / `grantTemporaryAccess`, `revokeAccess`, `updatePolicy`, `setFileActive` from MetaMask
+6. **Delegate** – owner calls `delegateManagement(fileId, delegate, expiresAt)`; see below
+7. **Request** – `requestAccess(fileId)` records the attempt (granted or denied) on-chain
 
-Other endpoints: `GET /api/files/mine`, `/api/files/shared`, `/api/files/:id`, `/api/access/:id/check` (decision + reason), `/api/access/audit`, `/api/access/user/:address`, `/api/health`.
+## Delegation with limits
+
+An owner can let another registered user (for example a TA) manage access to one file for a limited time.
+
+- **A delegate can** grant access (permanent or for a set time) and revoke access for other users, until the delegation ends.
+- **A delegate cannot** change the policy, deactivate the file, delegate further, grant itself access, or undo a revocation the owner made.
+- **Grants a delegate makes** never outlive the delegation. They stop when it expires, or straight away if the owner removes the delegate.
+- **Owner grants** are not affected by delegations ending.
+
+Contract functions: `delegateManagement`, `revokeDelegation`, `isDelegate`, `getDelegates`, `getManagedFiles`,
+`grantTemporaryAccess`, `hasActiveGrant`. Events: `ManagementDelegated`, `DelegationRevoked`; `AccessGranted` and
+`AccessRevoked` record who acted (`by`) and the grant's expiry.
+
+Other endpoints: `GET /api/files/managed` (files delegated to you), `/api/files/:id/delegates`, `/api/files/mine`, `/api/files/shared`, `/api/files/:id`, `/api/access/:id/check` (decision + reason), `/api/access/audit`, `/api/access/user/:address`, `/api/health`.
 
 **Design note:** file keys are held by the backend (wrapped with `MASTER_KEY`), so the backend is trusted to release a file only
 after the on-chain check. Revocation stops future downloads but cannot erase copies already downloaded.
