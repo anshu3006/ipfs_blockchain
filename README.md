@@ -52,6 +52,16 @@ Run the contract tests with `cd blockchain && npm test`.
 **After restarting `npx hardhat node`** the chain is empty: run `npm run deploy` again, and in MetaMask use
 *Settings → Advanced → Clear activity tab data* for each account (otherwise MetaMask uses old nonces and transactions fail).
 
+**Block every 2 seconds.** `npx hardhat node` (and therefore `npm start`) is configured to mine a block every 2 seconds
+in addition to one per transaction (`blockchain/hardhat.config.js`). Expiry of delegations and temporary grants is checked
+against `block.timestamp`; without interval mining the idle local chain would keep an old timestamp and expired rights
+would still look active. Real networks produce a block about every 12 seconds, so this matches their behaviour.
+Unit tests (`npm test`) keep plain automine.
+
+**Red `eth_call … unrecognized-selector … reverted` lines in the chain output are harmless.** They are read-only probes
+MetaMask sends to check whether the contract is a token (`decimals()`, `symbol()`, …); `FileStorage` is not, so they
+revert. They are not transactions and cost no gas.
+
 ## MetaMask setup (once)
 
 1. The app adds the **Hardhat Local** network (`http://127.0.0.1:8545`, chain ID `31337`) automatically when you connect. You can also add it by hand.
